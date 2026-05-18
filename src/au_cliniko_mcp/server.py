@@ -33,6 +33,7 @@ from au_cliniko_mcp.tools import (
     patients as patients_tool,
     practitioners as practitioners_tool,
     recalls as recalls_tool,
+    revenue as revenue_tool,
     treatment_notes as treatment_notes_tool,
 )
 
@@ -122,7 +123,8 @@ def build_server() -> tuple[FastMCP, ClinikoClient]:
     available_time_tool.register(mcp, client)        # 1 tool
     treatment_notes_tool.register(mcp, client)       # 3 tools (1 safety-gated write)
     aggregators_tool.register(mcp, client)           # 3 tools (multi-resource composites)
-    # Total: 22 tools
+    revenue_tool.register(mcp, client)               # 4 tools (Phase D-Revenue)
+    # Total: 26 tools
 
     return mcp, client
 
