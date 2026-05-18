@@ -89,14 +89,14 @@ def build_server() -> tuple[FastMCP, ClinikoClient]:
     patients_tool.register(mcp, client)              # 3 tools
     practitioners_tool.register(mcp, client)         # 1 tool
     businesses_tool.register(mcp, client)            # 1 tool
-    appointments_tool.register(mcp, client)          # 2 tools
+    appointments_tool.register(mcp, client)          # 3 tools (incl. per-patient lookup)
     bookings_tool.register(mcp, client)              # 1 tool
     invoices_tool.register(mcp, client)              # 3 tools
     recalls_tool.register(mcp, client)               # 2 tools
     communications_tool.register(mcp, client)        # 1 tool
     available_time_tool.register(mcp, client)        # 1 tool
     treatment_notes_tool.register(mcp, client)       # 3 tools (1 safety-gated write)
-    # Total: 18 tools
+    # Total: 19 tools
 
     return mcp, client
 

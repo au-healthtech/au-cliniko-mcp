@@ -115,3 +115,62 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
             - PHI: same as `list_appointments`.
         """
         return await client.get(f"/individual_appointments/{appointment_id}")
+
+    @mcp.tool()
+    async def list_appointments_for_patient(
+        patient_id: str,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        per_page: int = 100,
+    ) -> dict[str, Any]:
+        """List all appointments for a specific patient, optionally within a date range.
+
+        When to use:
+            - "Has Jane been in recently?"
+            - "Show me Eric Shin's appointment history"
+            - "When was this patient's last visit?"
+            - Reasoning about "who hasn't been in for 6 months" — drill into
+              individual patients rather than fetching ALL appointments
+              across the whole practice
+
+        WORKING_EXAMPLE:
+            ```
+            list_appointments_for_patient(patient_id="12345678901234567890")
+            list_appointments_for_patient(patient_id="12345...", from_date="2025-11-18")
+            ```
+
+        Notes:
+            - Faster + smaller payload than filtering the whole practice list.
+              Use THIS for per-patient questions; use `list_appointments` for
+              practice-wide schedule views.
+            - Patient IDs are 19-digit strings.
+            - PHI: same as `list_appointments`.
+
+        Args:
+            patient_id: 19-digit Cliniko patient id.
+            from_date: optional ISO date — earliest appointment to include.
+            to_date: optional ISO date — latest appointment to include.
+            per_page: results per page (Cliniko max 100). Default 100.
+        """
+        q_params: list[tuple[str, str]] = [
+            ("per_page", str(per_page)),
+            ("q[]", f"patient_id:={patient_id}"),
+        ]
+        if from_date:
+            q_params.append(("q[]", f"starts_at:>={from_date}T00:00:00Z"))
+        if to_date:
+            q_params.append(("q[]", f"starts_at:<={to_date}T23:59:59Z"))
+
+        result = await client.get("/individual_appointments", params=q_params)
+
+        if "error" in result:
+            return result
+
+        appts = result.get("individual_appointments", [])
+        total = result.get("total_entries") or len(appts)
+
+        return list_wrapper(
+            items_full=appts,
+            summary_lines=[summarise_appointment(a) for a in appts],
+            total_entries=total,
+        )

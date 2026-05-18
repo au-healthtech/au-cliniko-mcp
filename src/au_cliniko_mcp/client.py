@@ -26,8 +26,8 @@ from au_cliniko_mcp.errors import (
     upstream_unavailable,
 )
 
-DEFAULT_TIMEOUT_SECONDS = 30.0
-MAX_RETRIES = 4
+DEFAULT_TIMEOUT_SECONDS = 15.0  # tight — Claude Desktop's tool timeout is 4-5min; fail fast
+MAX_RETRIES = 3  # 1+2+4 = 7s worst-case backoff before giving up
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
