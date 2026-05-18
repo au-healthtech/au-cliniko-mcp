@@ -76,45 +76,91 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         )
 
     @mcp.tool()
-    async def list_all_patients(max_pages: int = 30) -> dict[str, Any]:
+    async def list_all_patients(
+        max_pages: int = 30,
+        confirm_over: int = 300,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
         """Fetch ALL patients on the account by auto-paginating.
+
+        ⚠️ COST-GATED: this tool refuses to run if the account has more than
+        `confirm_over` patients UNLESS `confirmed=True`. This prevents
+        accidental large fan-outs that would burn LLM tokens + API calls.
+
+        When BLOCKED, the tool returns `needs_confirmation: true` with a cost
+        estimate. The LLM MUST surface the options to the user and retry with
+        the chosen scope.
 
         When to use (preferred for any "across all patients" question):
             - "Find duplicate patient records"
             - "Patients with no email or phone"
-            - "How many patients do we have? Show me all of them"
             - "Find patients matching <criterion>"
-            - Anything that needs to look at the full patient list
+            - Compliance workflows that legally need every patient (recalls,
+              AHPRA-mandated communications)
 
-        WORKING_EXAMPLE:
+        WORKING_EXAMPLE (typical flow on a large practice):
             ```
-            list_all_patients()                # default — up to 30 pages × 100 = 3000 patients
-            list_all_patients(max_pages=10)    # caps at 1000 patients
+            # Step 1: probe — tool refuses, returns total + cost estimate
+            list_all_patients()
+              → { needs_confirmation: true, total_entries: 3127, ... }
+
+            # Step 2: ask the user; once they choose, retry with confirmed=True
+            list_all_patients(confirmed=True)                  # all 3127
+            list_all_patients(confirmed=True, max_pages=5)     # cap at 500
             ```
 
         Notes:
             - Walks pages 1..N at per_page=100 until `has_more=false` or max_pages hit.
-            - For practices with >3000 patients, raise max_pages or do criterion-filtered
-              fan-outs instead.
             - PHI: demographics + contact for every patient. Audit-logged in Phase C.
-            - Cost-aware: this can be expensive on a 5000+ patient practice.
-              Prefer `search_patients_by_name` or filtered list_patients when
-              the answer doesn't actually require every patient.
+            - Cost-aware. For statistical questions (% rates), sample via
+              filtered list_patients + per-patient drill-down instead.
 
         Args:
             max_pages: cap on pagination depth (default 30 = up to 3000 patients).
-
-        Returns the standard list envelope with all patients combined.
+            confirm_over: refuse to run if total_entries > this without confirmed=True (default 300).
+            confirmed: pass True to bypass the cost gate after asking the user.
         """
+        # Step 0: cheap probe — get total_entries from a 1-record fetch
+        probe = await client.get("/patients", params={"per_page": 1})
+        if "error" in probe:
+            return probe
+        total_entries = probe.get("total_entries", 0)
+
+        # Cost gate: if too big and not confirmed, return a structured refusal
+        if total_entries > confirm_over and not confirmed:
+            # Rough cost estimate: ~3-5k tokens per page * pages * Haiku rates
+            pages_needed = min(max_pages, (total_entries + 99) // 100)
+            est_input_tokens = pages_needed * 4000
+            est_cost_haiku = round(est_input_tokens * 0.80 / 1_000_000, 3)
+            est_cost_sonnet = round(est_input_tokens * 3.00 / 1_000_000, 3)
+            return {
+                "needs_confirmation": True,
+                "total_entries": total_entries,
+                "would_fetch_pages": pages_needed,
+                "estimated_cost_usd_haiku": est_cost_haiku,
+                "estimated_cost_usd_sonnet": est_cost_sonnet,
+                "message": (
+                    f"This clinic has {total_entries:,} patients. Fetching them all "
+                    f"would visit {pages_needed} pages and cost ~${est_cost_haiku} on "
+                    f"Haiku (~${est_cost_sonnet} on Sonnet). Ask the user how they "
+                    "want to proceed."
+                ),
+                "options_to_offer_user": {
+                    "sample_100": "list_all_patients(confirmed=True, max_pages=1)",
+                    "sample_500": "list_all_patients(confirmed=True, max_pages=5)",
+                    "sample_1000": "list_all_patients(confirmed=True, max_pages=10)",
+                    "all_patients": f"list_all_patients(confirmed=True, max_pages={pages_needed})",
+                },
+            }
+
+        # Confirmed (or under threshold): do the work
         all_patients: list[dict[str, Any]] = []
         page = 1
-        total_entries = 0
         while page <= max_pages:
             r = await client.get("/patients", params={"page": page, "per_page": 100})
             if "error" in r:
                 return r
             all_patients.extend(r.get("patients", []))
-            total_entries = r.get("total_entries") or len(all_patients)
             if not r.get("links", {}).get("next"):
                 break
             page += 1

@@ -197,8 +197,14 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
     async def get_appointment_invoice_join(
         from_date: str,
         to_date: str,
+        confirm_over: int = 500,
+        confirmed: bool = False,
     ) -> dict[str, Any]:
         """For each appointment in range, find the matching invoice (if any).
+
+        ⚠️ COST-GATED: refuses to run if the appointment count in the range
+        exceeds `confirm_over` UNLESS `confirmed=True`. Returns a structured
+        refusal with cost estimate so the LLM can ask the user.
 
         When to use:
             - "Which appointments last week don't have an invoice issued?"
@@ -243,7 +249,38 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         Args:
             from_date: ISO date YYYY-MM-DD (inclusive) on appointments.
             to_date: ISO date YYYY-MM-DD (inclusive) on appointments.
+            confirm_over: refuse if appointment count > this. Default 500.
+            confirmed: pass True to bypass the cost gate after asking the user.
         """
+        # Step 0: cheap probe — appointment count in range
+        probe_params = [
+            ("per_page", "1"),
+            ("q[]", f"starts_at:>={from_date}T00:00:00Z"),
+            ("q[]", f"starts_at:<={to_date}T23:59:59Z"),
+        ]
+        probe = await client.get("/individual_appointments", params=probe_params)
+        if "error" in probe:
+            return probe
+        appt_count = probe.get("total_entries", 0)
+        if appt_count > confirm_over and not confirmed:
+            est = round((appt_count // 100 + 1) * 4000 * 0.80 / 1_000_000, 3)
+            return {
+                "needs_confirmation": True,
+                "appointment_count_in_range": appt_count,
+                "from": from_date,
+                "to": to_date,
+                "estimated_cost_usd_haiku": est,
+                "message": (
+                    f"{appt_count:,} appointments fall in this date range. The join "
+                    "would visit each one against the invoice list and could exceed "
+                    "the configured cost ceiling. Ask the user whether to proceed."
+                ),
+                "options_to_offer_user": {
+                    "narrow_date_range": "re-call with a shorter from/to window",
+                    "proceed_anyway": "re-call with confirmed=True",
+                },
+            }
+
         # Fetch appointments
         appt_params = [
             ("per_page", "100"),
