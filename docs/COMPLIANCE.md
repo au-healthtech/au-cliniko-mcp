@@ -7,6 +7,72 @@
 
 ---
 
+## 0. Hard pre-install rules (read before configuring ANY clinical Claude account)
+
+Two rules that must hold before any clinical PHI flows through Claude. Skipping
+either of these creates real liability — both for the practice and for whoever
+installed it.
+
+### Rule 0.1 — Dedicated clinical Claude account (no mixing personal + clinical)
+
+The clinical-use Claude account must be:
+- Created with a **practice-domain email** (e.g. `claude@inbloompsychology.com.au`),
+  NOT a practitioner's personal Gmail
+- Reserved exclusively for clinical work
+- Have **only the Cliniko MCP** mounted at install. No personal Gmail / personal
+  Drive / personal Calendar on the same account.
+
+**Why this matters**:
+- Claude chains tool calls. If a personal Gmail connector sits on the same account
+  as the Cliniko MCP, a single prompt can fetch a patient record from Cliniko
+  and email it to a personal inbox — that's a PHI leak under APP 11.
+- A compromised account with Cliniko + personal Gmail + personal Drive = a
+  multi-platform NDB-scheme breach. Drastically larger blast radius.
+- If a forensic / OAIC investigation happens, mixed-use accounts make audit-trail
+  reconstruction much harder.
+- Liability shifts to whoever configured the mixed-use account.
+
+Personal AI use happens on a SEPARATE personal Claude account. Practice-Xero
+(if needed) goes on a SEPARATE scoped engagement, not the clinical account.
+
+### Rule 0.2 — Training opt-out + memory disabled (consumer Claude defaults)
+
+Consumer Claude plans (Free/Pro/Max) train on user data **by default** as of
+late 2025. Before the clinical account sees any patient data, complete this
+hard checklist:
+
+| Setting (claude.ai → Settings) | Required state | Why |
+|---|---|---|
+| Privacy → "Help improve Claude" | **OFF** | Otherwise PHI may be retained up to 5 years for training |
+| Personal → "Generate memory from chat history" | **OFF** | Stops cross-conversation PHI carryover |
+| Personal → "Search and reference past chats" | **OFF** | Same reason |
+| Account → 2-factor authentication | **ON (TOTP)** | Required for any account holding clinical access |
+| Devices / Sessions | Reviewed quarterly | Revoke anything unrecognised |
+
+API / Bedrock / Vertex AI usage is **exempt** from consumer training (different
+contractual basis). If the clinic is on Bedrock ap-southeast-2 these toggles
+are moot — but the dedicated-account rule still applies.
+
+### Rule 0.3 — AU residency for compliance-anxious specialties
+
+For psychology, psychiatry, DVA, forensic, mental health, and any specialty
+where the practice's procurement officer specifically asks about data
+residency, the LLM endpoint must be one of:
+
+- **AWS Bedrock ap-southeast-2 (Sydney)** ← our recommended path
+- GCP Vertex AI australia-southeast1
+- Claude for Work / Enterprise with regional endpoints
+
+Direct Anthropic API only offers `inference_geo: "us" | "global"` — no AU
+region exposed. For specialties that genuinely need provable AU residency,
+this is the only path.
+
+For solo and small allied-health practices NOT in compliance-anxious specialties,
+direct Anthropic API with the standard DPA + standard contractual clauses is
+adequate under APP 8.
+
+---
+
 ## 1. Frameworks covered
 
 | Framework | Applies because | Our position |
