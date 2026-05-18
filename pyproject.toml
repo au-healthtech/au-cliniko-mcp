@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "au-cliniko-mcp"
+version = "0.0.1"
+description = "Open-source Cliniko MCP server for Australian allied-health practices — MIT-licensed, audit-logged, AHPRA-aware."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Tradd Horne", email = "tradd@principalpodiatry.com.au" },
+]
+keywords = ["cliniko", "mcp", "allied-health", "australia", "ahpra", "healthtech"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Healthcare Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.6.0",
+    "cryptography>=42.0.0",
+    "python-dateutil>=2.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-httpx>=0.30.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+postgres = [
+    "asyncpg>=0.29.0",
+]
+
+[project.scripts]
+au-cliniko-mcp = "au_cliniko_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/au-healthtech/au-cliniko-mcp"
+Documentation = "https://github.com/au-healthtech/au-cliniko-mcp/tree/main/docs"
+Repository = "https://github.com/au-healthtech/au-cliniko-mcp"
+Issues = "https://github.com/au-healthtech/au-cliniko-mcp/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/au_cliniko_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
