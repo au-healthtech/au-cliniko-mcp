@@ -19,37 +19,44 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
     """Wire patient tools onto the MCP server."""
 
     @mcp.tool()
-    async def list_patients(page: int = 1, per_page: int = 25) -> dict[str, Any]:
-        """List patients on the active Cliniko account.
+    async def list_patients(page: int = 1, per_page: int = 100) -> dict[str, Any]:
+        """List ONE PAGE of patients on the active Cliniko account.
+
+        ⚠️ IMPORTANT — pagination semantics:
+            This returns ONE PAGE only (up to `per_page`). The `total_entries`
+            field is the AUTHORITATIVE patient count for the whole account.
+            For "how many patients" questions, ALWAYS read `total_entries` —
+            never count the items you got back, because they are page 1 of N.
+
+            If `has_more: true`, there are MORE pages. To enumerate ALL patients
+            (e.g. for duplicate detection, missing-contact audit, count-by-criteria),
+            use `list_all_patients()` instead — it handles pagination for you
+            and is much cheaper than calling list_patients(page=1, 2, 3 ...).
 
         When to use:
-            Call when the practitioner asks something like "who are my patients,"
-            "show me everyone in the system," "give me a patient list," or as a
-            first step before drilling into a specific patient by id.
+            - Quick browse of patients ("show me the first 25 patients")
+            - As a sanity check or first peek before drilling in
 
-        Returns the standard list envelope:
-            - `summary_markdown`: one-line summary per patient — read this first
-              for casual queries. Each line carries the patient id you can pass
-              to subsequent tools.
-            - `items`: full Cliniko patient objects — read only when you need
-              fields not in the summary.
-            - `page`, `total_entries`, `has_more`: pagination.
+        DO NOT use when:
+            - The question requires looking at ALL patients
+              → use `list_all_patients` instead
+            - The question is "how many patients do we have?"
+              → call this with per_page=1 and read total_entries
 
         WORKING_EXAMPLE:
             ```
-            list_patients(page=1, per_page=25)
+            list_patients()                              # first 100 patients
+            list_patients(per_page=1)                    # just for the count
+            list_patients(page=2, per_page=100)          # second page
             ```
 
         Notes:
-            - Patient IDs are 19-digit strings. Never coerce to int — Python ints
-              of that size are fine in Python 3 but lose precision on JSON round-trips
-              in some clients.
-            - This tool reads PHI (demographics, contact details). In Phase C,
-              calls will be audit-logged with `phi_categories=['demographics','contact']`.
+            - Patient IDs are 19-digit strings. Never coerce to int.
+            - PHI: demographics + contact. Audit-logged in Phase C.
 
         Args:
             page: 1-indexed page number. Default 1.
-            per_page: Results per page (Cliniko max 100). Default 25.
+            per_page: Results per page (Cliniko max 100). Default 100.
         """
         result = await client.get("/patients", params={"page": page, "per_page": per_page})
 
@@ -66,6 +73,58 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
             total_entries=total,
             page=page,
             has_more=has_more,
+        )
+
+    @mcp.tool()
+    async def list_all_patients(max_pages: int = 30) -> dict[str, Any]:
+        """Fetch ALL patients on the account by auto-paginating.
+
+        When to use (preferred for any "across all patients" question):
+            - "Find duplicate patient records"
+            - "Patients with no email or phone"
+            - "How many patients do we have? Show me all of them"
+            - "Find patients matching <criterion>"
+            - Anything that needs to look at the full patient list
+
+        WORKING_EXAMPLE:
+            ```
+            list_all_patients()                # default — up to 30 pages × 100 = 3000 patients
+            list_all_patients(max_pages=10)    # caps at 1000 patients
+            ```
+
+        Notes:
+            - Walks pages 1..N at per_page=100 until `has_more=false` or max_pages hit.
+            - For practices with >3000 patients, raise max_pages or do criterion-filtered
+              fan-outs instead.
+            - PHI: demographics + contact for every patient. Audit-logged in Phase C.
+            - Cost-aware: this can be expensive on a 5000+ patient practice.
+              Prefer `search_patients_by_name` or filtered list_patients when
+              the answer doesn't actually require every patient.
+
+        Args:
+            max_pages: cap on pagination depth (default 30 = up to 3000 patients).
+
+        Returns the standard list envelope with all patients combined.
+        """
+        all_patients: list[dict[str, Any]] = []
+        page = 1
+        total_entries = 0
+        while page <= max_pages:
+            r = await client.get("/patients", params={"page": page, "per_page": 100})
+            if "error" in r:
+                return r
+            all_patients.extend(r.get("patients", []))
+            total_entries = r.get("total_entries") or len(all_patients)
+            if not r.get("links", {}).get("next"):
+                break
+            page += 1
+
+        return list_wrapper(
+            items_full=all_patients,
+            summary_lines=[summarise_patient(p) for p in all_patients],
+            total_entries=total_entries,
+            page=1,
+            has_more=False,
         )
 
     @mcp.tool()

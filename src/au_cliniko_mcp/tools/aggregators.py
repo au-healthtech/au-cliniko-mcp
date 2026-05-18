@@ -289,6 +289,10 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         })
         unbilled: list[str] = []
 
+        # Also count appointments with notes attached, using Cliniko's
+        # has_patient_appointment_notes flag (saves a join entirely).
+        appts_with_notes = 0
+        appts_missing_notes_ids: list[str] = []
         for a in appts:
             at_link = (a.get("appointment_type") or {}).get("links", {}).get("self", "")
             at_id = at_link.rstrip("/").rsplit("/", 1)[-1] if at_link else "unknown"
@@ -304,6 +308,10 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
                     pass
             else:
                 unbilled.append(a["id"])
+            if a.get("has_patient_appointment_notes"):
+                appts_with_notes += 1
+            else:
+                appts_missing_notes_ids.append(a["id"])
 
         # Compute averages
         for t in by_type.values():
@@ -320,6 +328,9 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
             "appointments_with_invoice": with_invoice,
             "appointments_without_invoice": len(unbilled),
             "capture_rate": round(with_invoice / total_appts, 3) if total_appts else 0.0,
+            "appointments_with_notes": appts_with_notes,
+            "appointments_missing_notes": len(appts_missing_notes_ids),
+            "missing_notes_sample_ids": appts_missing_notes_ids[:20],
             "by_appointment_type": dict(by_type),
             "unbilled_appointment_ids": unbilled[:20],
         }

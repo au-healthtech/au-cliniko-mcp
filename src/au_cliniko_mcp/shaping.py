@@ -64,16 +64,27 @@ def summarise_patient(p: dict[str, Any]) -> str:
 
 
 def summarise_appointment(a: dict[str, Any]) -> str:
-    """One-line markdown summary of an appointment."""
+    """One-line markdown summary of an appointment.
+
+    Includes appointment_type id at the tail since Cliniko's list response only
+    embeds the type as a HATEOAS link, and the LLM otherwise misses the type
+    affiliation entirely.
+    """
     aid = a.get("id", "?")
     start = a.get("starts_at", "?")
     end = a.get("ends_at", "?")
     cancelled = " ❌ CANCELLED" if a.get("cancelled_at") else ""
-    patient_link = (a.get("patient") or {}).get("links", {}).get("self", "?")
-    patient_id = _id_from_link(patient_link)
-    pract_link = (a.get("practitioner") or {}).get("links", {}).get("self", "?")
-    pract_id = _id_from_link(pract_link)
-    return f"- {start} → {end} | appt `{aid}` (patient `{patient_id}`, practitioner `{pract_id}`){cancelled}"
+    no_show = " ⚠️ DID-NOT-ARRIVE" if a.get("did_not_arrive") else ""
+    has_notes = a.get("has_patient_appointment_notes")
+    notes_flag = "" if has_notes is None else (" 📝note" if has_notes else " ∅note")
+    patient_id = _id_from_link((a.get("patient") or {}).get("links", {}).get("self", "?"))
+    pract_id = _id_from_link((a.get("practitioner") or {}).get("links", {}).get("self", "?"))
+    type_id = _id_from_link((a.get("appointment_type") or {}).get("links", {}).get("self", "?"))
+    return (
+        f"- {start} → {end} | appt `{aid}` "
+        f"(patient `{patient_id}`, practitioner `{pract_id}`, type `{type_id}`)"
+        f"{cancelled}{no_show}{notes_flag}"
+    )
 
 
 def summarise_practitioner(p: dict[str, Any]) -> str:
