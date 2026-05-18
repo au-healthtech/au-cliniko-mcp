@@ -33,11 +33,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.client import ClinikoClient
+from au_cliniko_mcp.phi import PHI_CLINICAL_NOTES, phi_flagged
 from au_cliniko_mcp.shaping import list_wrapper, summarise_treatment_note
 
 
 def register(mcp: FastMCP, client: ClinikoClient) -> None:
     @mcp.tool()
+    @phi_flagged(PHI_CLINICAL_NOTES)
     async def list_treatment_notes_for_patient(
         patient_id: str,
         page: int = 1,
@@ -89,6 +91,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         )
 
     @mcp.tool()
+    @phi_flagged(PHI_CLINICAL_NOTES)
     async def get_treatment_note(treatment_note_id: str) -> dict[str, Any]:
         """Get one treatment note's full record, INCLUDING clinical content.
 
@@ -115,6 +118,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         return await client.get(f"/treatment_notes/{treatment_note_id}")
 
     @mcp.tool()
+    @phi_flagged(PHI_CLINICAL_NOTES, write=True)
     async def draft_treatment_note(
         patient_id: str,
         practitioner_id: str,

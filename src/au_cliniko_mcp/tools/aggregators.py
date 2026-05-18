@@ -17,12 +17,19 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.client import ClinikoClient
+from au_cliniko_mcp.phi import (
+    PHI_APPOINTMENT_METADATA,
+    PHI_BILLING,
+    PHI_PATIENT_LINK,
+    phi_flagged,
+)
 
 
 def register(mcp: FastMCP, client: ClinikoClient) -> None:
     """Wire the aggregator tools onto the MCP server."""
 
     @mcp.tool()
+    @phi_flagged(PHI_APPOINTMENT_METADATA, PHI_PATIENT_LINK)
     async def get_patient_appointment_stats(
         patient_id: str,
         since_date: str | None = None,
@@ -194,6 +201,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         }
 
     @mcp.tool()
+    @phi_flagged(PHI_APPOINTMENT_METADATA, PHI_BILLING)
     async def get_appointment_invoice_join(
         from_date: str,
         to_date: str,

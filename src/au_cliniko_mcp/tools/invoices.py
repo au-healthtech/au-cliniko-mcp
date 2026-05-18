@@ -25,6 +25,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.client import ClinikoClient
+from au_cliniko_mcp.phi import PHI_BILLING, PHI_PATIENT_LINK, phi_flagged
 from au_cliniko_mcp.shaping import list_wrapper, summarise_invoice
 
 # Friendly name → integer mapping for the Cliniko status filter.
@@ -38,6 +39,7 @@ _INVOICE_STATUS_MAP: dict[str, int] = {
 
 def register(mcp: FastMCP, client: ClinikoClient) -> None:
     @mcp.tool()
+    @phi_flagged(PHI_BILLING, PHI_PATIENT_LINK)
     async def list_invoices(
         from_date: str | None = None,
         to_date: str | None = None,
@@ -109,6 +111,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         )
 
     @mcp.tool()
+    @phi_flagged(PHI_BILLING, PHI_PATIENT_LINK)
     async def list_unpaid_invoices(over_days: int = 30, per_page: int = 50) -> dict[str, Any]:
         """List invoices that are awaiting payment, optionally older than N days.
 
@@ -157,6 +160,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         )
 
     @mcp.tool()
+    @phi_flagged(PHI_BILLING, PHI_PATIENT_LINK)
     async def get_invoice(invoice_id: str) -> dict[str, Any]:
         """Get one invoice by id, including line items and payment history.
 

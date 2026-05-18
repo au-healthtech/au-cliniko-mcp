@@ -22,11 +22,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.client import ClinikoClient
+from au_cliniko_mcp.phi import PHI_APPOINTMENT_METADATA, PHI_PATIENT_LINK, phi_flagged
 from au_cliniko_mcp.shaping import list_wrapper, summarise_appointment
 
 
 def register(mcp: FastMCP, client: ClinikoClient) -> None:
     @mcp.tool()
+    @phi_flagged(PHI_APPOINTMENT_METADATA, PHI_PATIENT_LINK)
     async def list_appointments(
         from_date: str | None = None,
         to_date: str | None = None,
@@ -97,6 +99,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         )
 
     @mcp.tool()
+    @phi_flagged(PHI_APPOINTMENT_METADATA, PHI_PATIENT_LINK)
     async def get_appointment(appointment_id: str) -> dict[str, Any]:
         """Get one individual appointment by id.
 
@@ -117,6 +120,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         return await client.get(f"/individual_appointments/{appointment_id}")
 
     @mcp.tool()
+    @phi_flagged(PHI_APPOINTMENT_METADATA, PHI_PATIENT_LINK)
     async def list_appointments_for_patient(
         patient_id: str,
         from_date: str | None = None,

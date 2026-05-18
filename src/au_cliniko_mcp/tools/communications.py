@@ -13,11 +13,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.client import ClinikoClient
+from au_cliniko_mcp.phi import PHI_COMMUNICATIONS, phi_flagged
 from au_cliniko_mcp.shaping import list_wrapper
 
 
 def register(mcp: FastMCP, client: ClinikoClient) -> None:
     @mcp.tool()
+    @phi_flagged(PHI_COMMUNICATIONS)
     async def list_communications_for_patient(
         patient_id: str,
         per_page: int = 25,

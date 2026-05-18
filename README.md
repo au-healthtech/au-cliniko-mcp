@@ -27,17 +27,37 @@ This project fixes that. MIT-licensed, audit-logged, with bundled discipline-spe
 
 ## Status
 
-🚧 **Pre-alpha.** Initial scaffolding 2026-05-18. Tracking toward v1.0 in ~10 weeks.
+🚧 **Alpha.** Initial build 2026-05-18. Tracking toward v1.0 in ~10 weeks.
 
 | Phase | Target | Status |
 |---|---|---|
-| A — Foundations | Week 1 | scaffolded |
-| B — Tier 1 endpoints (15+) | Weeks 2-3 | pending |
-| C — Compliance layer (audit log, PHI guards, vault) | Weeks 3-4 | pending |
+| A — Foundations | Week 1 | ✅ shipped |
+| B — Tier 1 endpoints (23 tools across 10 Cliniko resources) | Weeks 2-3 | ✅ shipped |
+| C — Compliance layer (audit log, PHI guards, vault) | Weeks 3-4 | ✅ shipped |
 | D — Clinical templates (6 disciplines + NDIS) | Weeks 4-5 | pending |
 | E — Tier 2-3 endpoints | Weeks 5-7 | pending |
 | F — Hosted gateway | Weeks 7-10 | pending |
 | G — v1.0 release | Week 10 | pending |
+
+## Compliance layer (Phase C)
+
+Every tool that touches Protected Health Information (PHI) carries an explicit
+`@phi_flagged` decorator declaring what categories of PHI it returns. Each call is:
+
+- **Audit-logged** to local SQLite (`~/.au-cliniko-mcp/audit.db`) with timestamp,
+  tool name, patient/practitioner id (when present), PHI categories, result status,
+  elapsed ms, and redacted args. 7-year retention default (AU statutory minimum).
+- **Tagged with a `_phi` response header** so any downstream consumer knows the
+  sensitivity of the data it just received.
+
+API keys + future license keys are stored in a **Fernet-encrypted Vault** at
+`~/.au-cliniko-mcp/vault.db` with the encryption key at `~/.au-cliniko-mcp/vault.key`
+(chmod 600).
+
+See:
+- `docs/COMPLIANCE.md` — APP-by-APP self-assessment + AHPRA / MBS / NDIS / DVA / state-statute positions
+- `docs/SECURITY.md` — threat model, controls, operational recommendations
+- `docs/PIA-template.md` — Privacy Impact Assessment template for clinics to complete pre-install
 
 ## Quick start (when v1.0 ships)
 

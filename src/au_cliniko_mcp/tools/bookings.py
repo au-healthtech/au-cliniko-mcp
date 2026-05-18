@@ -13,11 +13,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.client import ClinikoClient
+from au_cliniko_mcp.phi import PHI_APPOINTMENT_METADATA, PHI_CONTACT, phi_flagged
 from au_cliniko_mcp.shaping import list_wrapper
 
 
 def register(mcp: FastMCP, client: ClinikoClient) -> None:
     @mcp.tool()
+    @phi_flagged(PHI_APPOINTMENT_METADATA, PHI_CONTACT)
     async def list_bookings(
         from_date: str | None = None,
         to_date: str | None = None,

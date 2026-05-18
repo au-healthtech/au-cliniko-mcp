@@ -19,6 +19,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
+from au_cliniko_mcp.audit import get_audit_log
 from au_cliniko_mcp.auth import ClinikoCredential, InvalidClinikoApiKey
 from au_cliniko_mcp.client import ClinikoClient
 from au_cliniko_mcp.tools import (
@@ -73,6 +74,10 @@ def build_server() -> tuple[FastMCP, ClinikoClient]:
     """Construct the MCP server with all tools registered."""
     credential = _load_credential()
     client = ClinikoClient(credential)
+
+    # Touch the audit-log singleton early — creates ~/.au-cliniko-mcp/audit.db
+    # if it doesn't exist yet, so the first tool call is fast.
+    get_audit_log()
 
     mcp = FastMCP(
         name="au-cliniko-mcp",

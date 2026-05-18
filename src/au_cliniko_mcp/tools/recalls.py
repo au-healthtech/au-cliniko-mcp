@@ -14,11 +14,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.client import ClinikoClient
+from au_cliniko_mcp.phi import PHI_PATIENT_LINK, phi_flagged
 from au_cliniko_mcp.shaping import list_wrapper, summarise_recall
 
 
 def register(mcp: FastMCP, client: ClinikoClient) -> None:
     @mcp.tool()
+    @phi_flagged(PHI_PATIENT_LINK)
     async def list_recalls_due(within_days: int = 30, per_page: int = 100) -> dict[str, Any]:
         """List recalls due within the next N days.
 
@@ -75,6 +77,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         )
 
     @mcp.tool()
+    @phi_flagged(PHI_PATIENT_LINK)
     async def list_recalls_for_patient(patient_id: str, per_page: int = 25) -> dict[str, Any]:
         """List all recalls (past and future) for a specific patient.
 

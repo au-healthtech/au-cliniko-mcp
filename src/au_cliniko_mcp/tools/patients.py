@@ -12,6 +12,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.client import ClinikoClient
+from au_cliniko_mcp.phi import PHI_CONTACT, PHI_DEMOGRAPHICS, phi_flagged
 from au_cliniko_mcp.shaping import list_wrapper, summarise_patient
 
 
@@ -19,6 +20,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
     """Wire patient tools onto the MCP server."""
 
     @mcp.tool()
+    @phi_flagged(PHI_DEMOGRAPHICS, PHI_CONTACT)
     async def list_patients(page: int = 1, per_page: int = 100) -> dict[str, Any]:
         """List ONE PAGE of patients on the active Cliniko account.
 
@@ -76,6 +78,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         )
 
     @mcp.tool()
+    @phi_flagged(PHI_DEMOGRAPHICS, PHI_CONTACT)
     async def list_all_patients(
         max_pages: int = 30,
         confirm_over: int = 300,
@@ -174,6 +177,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         )
 
     @mcp.tool()
+    @phi_flagged(PHI_DEMOGRAPHICS, PHI_CONTACT)
     async def get_patient(patient_id: str) -> dict[str, Any]:
         """Get one patient's full record by id.
 
@@ -201,6 +205,7 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         return result
 
     @mcp.tool()
+    @phi_flagged(PHI_DEMOGRAPHICS, PHI_CONTACT)
     async def search_patients_by_name(query: str, per_page: int = 25) -> dict[str, Any]:
         """Search patients by partial name match (first or last).
 
