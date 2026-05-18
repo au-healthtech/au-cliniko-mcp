@@ -6,8 +6,10 @@ This is the boot path. It:
 3. Registers tools, resources, and prompts.
 4. Starts the stdio MCP server.
 
-Phase-A scaffolding registers ONE tool (`list_patients`) as a smoke test. Phase B
-adds the full Tier-1 set; Phase C wraps every tool in audit-log + PHI-guard decorators.
+Phase A scaffolded one tool (list_patients). Phase B (this commit) wires the
+Tier-1 read-side: patients (3 tools), practitioners, businesses, appointments
+(2 tools), invoices (3 tools). Phase C will add the @phi_flagged and
+@consent_gated decorators that wrap every tool registered here.
 """
 
 from __future__ import annotations
@@ -19,7 +21,13 @@ from mcp.server.fastmcp import FastMCP
 
 from au_cliniko_mcp.auth import ClinikoCredential, InvalidClinikoApiKey
 from au_cliniko_mcp.client import ClinikoClient
-from au_cliniko_mcp.tools import patients as patients_tool
+from au_cliniko_mcp.tools import (
+    appointments as appointments_tool,
+    businesses as businesses_tool,
+    invoices as invoices_tool,
+    patients as patients_tool,
+    practitioners as practitioners_tool,
+)
 
 
 def _load_credential() -> ClinikoCredential:
@@ -66,15 +74,24 @@ def build_server() -> tuple[FastMCP, ClinikoClient]:
             "Open-source Cliniko MCP for Australian allied-health practices. "
             "Connects Claude directly to a Cliniko account via the Cliniko REST API. "
             f"Current Cliniko shard: {credential.shard}. "
-            "All write operations default to draft mode and require an explicit commit step."
+            "All write operations default to draft mode and require an explicit commit step. "
+            "PHI-touching reads are audit-logged when the audit-log database is configured."
         ),
     )
 
-    # Phase A: one tool, smoke test the whole stack.
+    # Tier 1 read-side (Phase B):
     patients_tool.register(mcp, client)
+    practitioners_tool.register(mcp, client)
+    businesses_tool.register(mcp, client)
+    appointments_tool.register(mcp, client)
+    invoices_tool.register(mcp, client)
 
-    # Phase B will add: appointments, bookings, treatment_notes, invoices,
-    # practitioners, businesses, recalls, communications, available_time.
+    # Coming in subsequent Phase B commits:
+    # bookings_tool.register(mcp, client)
+    # treatment_notes_tool.register(mcp, client)  # with draft gate
+    # recalls_tool.register(mcp, client)
+    # communications_tool.register(mcp, client)
+    # available_time_tool.register(mcp, client)
 
     return mcp, client
 
@@ -82,7 +99,7 @@ def build_server() -> tuple[FastMCP, ClinikoClient]:
 def main() -> None:
     """CLI entry point — registered as `au-cliniko-mcp` in pyproject.toml."""
     mcp, _client = build_server()
-    mcp.run()  # stdio transport by default
+    mcp.run()
 
 
 if __name__ == "__main__":
