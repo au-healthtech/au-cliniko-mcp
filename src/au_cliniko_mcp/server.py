@@ -36,6 +36,7 @@ from au_cliniko_mcp.tools import (
     insights as insights_tool,
     revenue as revenue_tool,
     treatment_notes as treatment_notes_tool,
+    workflows as workflows_tool,
 )
 
 
@@ -126,7 +127,8 @@ def build_server() -> tuple[FastMCP, ClinikoClient]:
     aggregators_tool.register(mcp, client)           # 3 tools (multi-resource composites)
     revenue_tool.register(mcp, client)               # 4 tools (Phase D-Revenue)
     insights_tool.register(mcp, client)              # 9 tools (Phase D-Insight)
-    # Total: 35 tools
+    workflows_tool.register(mcp, client)             # 3 tools + 6 named prompts (Phase D-Workflow)
+    # Total: 38 tools + 6 prompts
 
     return mcp, client
 
