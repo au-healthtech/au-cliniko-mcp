@@ -34,8 +34,12 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
             ```
 
         Notes:
-            - "Due" means `recall_date <= today + within_days`.
-            - Already-completed recalls are excluded.
+            - **Cliniko quirk (empirically verified au5, 2026-05-18)**:
+              `recall_at` is NOT filterable via q[]. Cliniko returns
+              `400: "recall_at is not filterable"`. We fetch all recalls
+              and filter client-side. For large clinics with thousands of
+              recalls this becomes slow — Phase E should add a local index.
+            - "Due" means `recall_at <= today + within_days`.
             - PHI: low-grade (patient ID + the recall note). Audit-logged.
 
         Args:
@@ -43,21 +47,31 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
             per_page: results per page (Cliniko max 100).
         """
         cutoff = (date.today() + timedelta(days=within_days)).isoformat()
-        q_params: list[tuple[str, str]] = [
-            ("per_page", str(per_page)),
-            ("q[]", f"recall_date:<={cutoff}"),
-            ("q[]", "completed:=false"),
-        ]
-        result = await client.get("/recalls", params=q_params)
+        # Fetch all recalls (paginate if needed) and filter client-side.
+        all_recalls: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            result = await client.get(
+                "/recalls", params={"per_page": per_page, "page": page}
+            )
+            if "error" in result:
+                return result
+            all_recalls.extend(result.get("recalls", []))
+            if not result.get("links", {}).get("next") or page >= 10:
+                break
+            page += 1
 
-        if "error" in result:
-            return result
+        # Client-side filter on recall_at (date string YYYY-MM-DD).
+        due = []
+        for r in all_recalls:
+            rdate = r.get("recall_at")
+            if rdate and rdate <= cutoff:
+                due.append(r)
 
-        recalls = result.get("recalls", [])
         return list_wrapper(
-            items_full=recalls,
-            summary_lines=[summarise_recall(r) for r in recalls],
-            total_entries=result.get("total_entries") or len(recalls),
+            items_full=due,
+            summary_lines=[summarise_recall(r) for r in due],
+            total_entries=len(due),
         )
 
     @mcp.tool()

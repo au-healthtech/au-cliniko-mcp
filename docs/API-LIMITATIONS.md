@@ -110,6 +110,41 @@ The `/communications` endpoint reads communication HISTORY (SMS/email sent to a 
 Cliniko's API does **not** expose a "send communication now" endpoint — automation must
 use Cliniko's built-in scheduled-communication feature configured in the UI.
 
+## Invoice status — INTEGER codes, not strings (verified au5, 2026-05-18)
+
+Cliniko's `/invoices` uses INTEGER status codes:
+- `20` = Paid
+
+Other codes likely exist (10 = Draft, 15 = Open/Awaiting Payment, 25 = Closed,
+30 = Void) but TBC empirically when test data has invoices in those states.
+
+Sending `status:=awaiting_payment` (string) returns:
+`400: "Filter value for status must be a number"`
+
+## Invoice fields — no `balance`, no `total` (verified au5, 2026-05-18)
+
+The Cliniko list view returns:
+- `total_amount` (NOT `total`)
+- `net_amount`
+- `tax_amount`
+- `status_description` (human-readable: "Paid")
+
+NO `balance` field. To compute outstanding $ on an unpaid invoice, fetch the
+invoice individually to get `payments[]`, then subtract sum-of-payments from
+total_amount. The list view alone is insufficient.
+
+## Recall fields — `recall_at` is NOT q[]-filterable (verified au5, 2026-05-18)
+
+Cliniko returns `400: "recall_at is not filterable"` if you send
+`q[]=recall_at:<=2026-06-15`. Despite Cliniko's general q[] support on most
+endpoints, recall_at is excluded.
+
+Workaround: fetch all recalls (paginated) and filter `recall_at` client-side.
+For large clinics with thousands of recalls this becomes slow — Phase E should
+add a local index or persistent cache.
+
+`recall_at` is stored as a DATE string (`YYYY-MM-DD`), not a full ISO datetime.
+
 ## Medical alerts taxonomy
 
 Cliniko stores medical alerts as free text. There's no taxonomy field, no severity

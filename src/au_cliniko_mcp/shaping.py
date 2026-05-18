@@ -98,14 +98,19 @@ def summarise_business(b: dict[str, Any]) -> str:
 
 
 def summarise_invoice(i: dict[str, Any]) -> str:
-    """One-line markdown summary of an invoice."""
+    """One-line markdown summary of an invoice.
+
+    Cliniko field reality (au5, 2026-05-18):
+      - total_amount (not 'total')
+      - status_description holds the human-readable status; status is an int code
+      - NO 'balance' field — we can't compute outstanding without payments[] sum
+    """
     iid = i.get("id", "?")
     number = i.get("number") or "?"
-    total = i.get("total") or "?"
-    balance = i.get("balance") or "?"
-    status = i.get("status") or "?"
+    total = i.get("total_amount") or i.get("total") or "?"  # fall back to legacy in case API differs by tier
+    status_desc = i.get("status_description") or f"code={i.get('status','?')}"
     issued = i.get("issue_date") or "?"
-    return f"- Invoice `{number}` (id `{iid}`): issued {issued}, total ${total}, balance ${balance}, status {status}"
+    return f"- Invoice `{number}` (id `{iid}`): issued {issued}, total ${total}, status {status_desc}"
 
 
 def summarise_treatment_note(n: dict[str, Any]) -> str:

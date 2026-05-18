@@ -6,6 +6,16 @@ an already-drafted invoice. Invoice creation must happen in the Cliniko UI.
 
 This file therefore reads + lists + retrieves invoices and surfaces the
 limitation clearly. `docs/API-LIMITATIONS.md` carries the full details.
+
+CLINIKO INVOICE STATUS CODES (empirically verified au5, 2026-05-18):
+    The /invoices endpoint uses INTEGER status codes, not strings:
+      20 = Paid
+    Other known codes (TBC empirically when sandbox has more invoices):
+      10 = Draft (likely)
+      15 = Open / Awaiting Payment (likely)
+      25 = Closed (likely)
+      30 = Void (likely)
+    Sending `status:=awaiting_payment` returns 400 "Filter value for status must be a number".
 """
 
 from __future__ import annotations
@@ -17,13 +27,21 @@ from mcp.server.fastmcp import FastMCP
 from au_cliniko_mcp.client import ClinikoClient
 from au_cliniko_mcp.shaping import list_wrapper, summarise_invoice
 
+# Friendly name → integer mapping for the Cliniko status filter.
+# Until we verify every code, only "paid" is fully confirmed.
+_INVOICE_STATUS_MAP: dict[str, int] = {
+    "paid": 20,
+    # Plausible but unconfirmed; pass integer directly to be safe:
+    # "draft": 10, "open": 15, "awaiting_payment": 15, "closed": 25, "void": 30,
+}
+
 
 def register(mcp: FastMCP, client: ClinikoClient) -> None:
     @mcp.tool()
     async def list_invoices(
         from_date: str | None = None,
         to_date: str | None = None,
-        status: str | None = None,
+        status: int | str | None = None,
         page: int = 1,
         per_page: int = 50,
     ) -> dict[str, Any]:
@@ -37,20 +55,24 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
         WORKING_EXAMPLE:
             ```
             list_invoices(from_date="2026-05-01", to_date="2026-05-31")
-            list_invoices(status="unpaid")
+            list_invoices(status=20)        # paid invoices
+            list_invoices(status="paid")    # synonym for 20
             ```
 
         Notes:
             - Dates are ISO-8601 (`YYYY-MM-DD`) and filter on `issue_date`.
-            - `status` can be: `draft`, `awaiting_payment`, `paid`, `void`.
-              For "unpaid" use `awaiting_payment` (Cliniko's exact term).
+            - **Cliniko invoice status is an INTEGER code**, not a string. Empirically
+              verified codes: 20 = Paid. The string "paid" is mapped for convenience.
+              Other strings ("awaiting_payment", "draft") are NOT yet auto-mapped;
+              pass the integer directly until we've verified each code.
             - PHI: invoices link to patient records. Audit-logged with
               `phi_categories=['billing','patient_link']`.
 
         Args:
             from_date: earliest issue date to include.
             to_date: latest issue date to include.
-            status: Cliniko invoice status filter.
+            status: integer status code or known string ("paid"). Other strings are
+                passed through to Cliniko verbatim and will return 400.
             page: 1-indexed page number.
             per_page: results per page.
         """
@@ -62,8 +84,12 @@ def register(mcp: FastMCP, client: ClinikoClient) -> None:
             q_params.append(("q[]", f"issue_date:>={from_date}"))
         if to_date:
             q_params.append(("q[]", f"issue_date:<={to_date}"))
-        if status:
-            q_params.append(("q[]", f"status:={status}"))
+        if status is not None:
+            if isinstance(status, str):
+                resolved = _INVOICE_STATUS_MAP.get(status.lower(), status)
+            else:
+                resolved = status
+            q_params.append(("q[]", f"status:={resolved}"))
 
         result = await client.get("/invoices", params=q_params)
 

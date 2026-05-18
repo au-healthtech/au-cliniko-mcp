@@ -163,21 +163,26 @@ class TestSummariseTreatmentNote:
 
 
 class TestSummariseInvoice:
-    def test_includes_balance_and_status(self):
+    def test_includes_total_amount_and_status_description(self):
+        """Updated for the real Cliniko schema (verified au5, 2026-05-18).
+
+        Cliniko uses `total_amount` not `total`, `status` is an integer code,
+        and `status_description` carries the human label. There is NO `balance`
+        field on the list view.
+        """
         s = summarise_invoice(
             {
                 "id": "444",
                 "number": "INV-001",
-                "total": "150.00",
-                "balance": "50.00",
-                "status": "awaiting_payment",
+                "total_amount": "150.00",
+                "status": 20,
+                "status_description": "Paid",
                 "issue_date": "2026-05-01",
             }
         )
         assert "INV-001" in s
         assert "$150.00" in s
-        assert "$50.00" in s
-        assert "awaiting_payment" in s
+        assert "Paid" in s
         assert "2026-05-01" in s
 
 
