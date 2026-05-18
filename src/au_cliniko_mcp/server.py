@@ -22,6 +22,7 @@ from mcp.server.fastmcp import FastMCP
 from au_cliniko_mcp.auth import ClinikoCredential, InvalidClinikoApiKey
 from au_cliniko_mcp.client import ClinikoClient
 from au_cliniko_mcp.tools import (
+    aggregators as aggregators_tool,
     appointments as appointments_tool,
     available_time as available_time_tool,
     bookings as bookings_tool,
@@ -96,7 +97,8 @@ def build_server() -> tuple[FastMCP, ClinikoClient]:
     communications_tool.register(mcp, client)        # 1 tool
     available_time_tool.register(mcp, client)        # 1 tool
     treatment_notes_tool.register(mcp, client)       # 3 tools (1 safety-gated write)
-    # Total: 19 tools
+    aggregators_tool.register(mcp, client)           # 3 tools (multi-resource composites)
+    # Total: 22 tools
 
     return mcp, client
 

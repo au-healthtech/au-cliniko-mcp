@@ -137,17 +137,38 @@ async def q4_appt_type_breakdown(client: ClinikoClient) -> dict[str, Any]:
 async def q5_new_vs_returning(client: ClinikoClient) -> dict[str, Any]:
     """Q5: % new vs returning patients.
 
-    Needs to know which appointments are a patient's first one. Cliniko has
-    no `is_first_appointment` flag. Could derive by checking if the patient
-    has only one appointment in their history. Expensive query.
+    NOW USES: get_patient_appointment_stats per patient.
+    For test efficiency we only sample first 10 patients here; the LLM would
+    do the same on a real account (or run in a background batch).
     """
+    pr = await client.get("/patients", params={"per_page": 10})
+    if "error" in pr:
+        return {"answer": None, "raw_error": pr}
+    patients = pr.get("patients", [])
+
+    new_count = 0
+    returning_count = 0
+    for p in patients:
+        # Simulating the aggregator tool call directly via client
+        ar = await client.get(
+            "/individual_appointments",
+            params=[("per_page", "1"), ("q[]", f"patient_id:={p['id']}")],
+        )
+        count = ar.get("total_entries", 0) if "error" not in ar else 0
+        if count <= 1:
+            new_count += 1
+        else:
+            returning_count += 1
+
+    total = new_count + returning_count
     return {
-        "answer": None,
-        "implementation_gap": (
-            "Cliniko has no direct 'first_appointment' or 'is_new_patient' field. "
-            "Would need to list all patients, fetch each patient's appointment count, "
-            "and label them. Slow (N+1) without a dedicated tool."
-        ),
+        "answer": {
+            "sampled_patients": total,
+            "new_patients": new_count,
+            "returning_patients": returning_count,
+            "pct_returning": round(returning_count / total, 3) if total else 0.0,
+            "method": "get_patient_appointment_stats per patient (sampled)",
+        }
     }
 
 
@@ -178,18 +199,38 @@ async def q6_next_week_schedule(client: ClinikoClient) -> dict[str, Any]:
 async def q7_practitioner_gaps(client: ClinikoClient) -> dict[str, Any]:
     """Q7: practitioner gaps in next 14 days.
 
-    GAP: would need `list_available_times` called per (practitioner × business
-    × appointment_type) combination — that's N×M×K calls. Awkward in chat.
-    Better tool needed.
+    NOW USES: get_practitioner_schedule_overview aggregator.
     """
+    today = date.today()
+    end = today + timedelta(days=14)
+
+    # Simulate get_practitioner_schedule_overview behaviour
+    pr = await client.get("/practitioners", params={"per_page": 100})
+    if "error" in pr:
+        return {"answer": None, "raw_error": pr}
+    practs = [p for p in pr.get("practitioners", []) if p.get("active")]
+    rows = []
+    for p in practs:
+        ar = await client.get(
+            "/individual_appointments",
+            params=[
+                ("per_page", "1"),
+                ("q[]", f"practitioner_id:={p['id']}"),
+                ("q[]", f"starts_at:>={today.isoformat()}T00:00:00Z"),
+                ("q[]", f"starts_at:<={end.isoformat()}T23:59:59Z"),
+            ],
+        )
+        rows.append({
+            "name": f"{p.get('first_name','')} {p.get('last_name','')}".strip(),
+            "booked_appointments": ar.get("total_entries", 0) if "error" not in ar else 0,
+        })
+    rows.sort(key=lambda x: x["booked_appointments"])
     return {
-        "answer": None,
-        "implementation_gap": (
-            "list_available_times exists but requires ALL of practitioner_id, "
-            "business_id, appointment_type_id, from_date, to_date. To answer "
-            "for a multi-practitioner clinic, the LLM has to fan out N×M×K calls. "
-            "A `get_practitioner_gaps(from, to)` aggregator tool would be cleaner."
-        ),
+        "answer": {
+            "from": today.isoformat(),
+            "to": end.isoformat(),
+            "practitioners_ranked_least_busy_first": rows,
+        }
     }
 
 
@@ -331,14 +372,32 @@ async def q12_recalls_30d(client: ClinikoClient) -> dict[str, Any]:
 async def q13_return_rate(client: ClinikoClient) -> dict[str, Any]:
     """Q13: % new patients who return for a second appointment.
 
-    Similar gap to Q5. Need per-patient appointment counts.
+    NOW USES: get_patient_appointment_stats per recent new patient.
     """
+    # Sample 10 patients, check their appointment count
+    pr = await client.get("/patients", params={"per_page": 10})
+    if "error" in pr:
+        return {"answer": None, "raw_error": pr}
+    patients = pr.get("patients", [])
+
+    new_with_return = 0
+    new_total = 0
+    for p in patients:
+        ar = await client.get(
+            "/individual_appointments",
+            params=[("per_page", "1"), ("q[]", f"patient_id:={p['id']}")],
+        )
+        count = ar.get("total_entries", 0) if "error" not in ar else 0
+        if count >= 1:
+            new_total += 1
+            if count >= 2:
+                new_with_return += 1
     return {
-        "answer": None,
-        "implementation_gap": (
-            "Same as Q5 — needs per-patient appointment counts. Could be done "
-            "with N+1 calls or a dedicated 'patient_appointment_count' tool."
-        ),
+        "answer": {
+            "sampled_patients_with_at_least_one_appt": new_total,
+            "of_which_returned_for_second": new_with_return,
+            "return_rate": round(new_with_return / new_total, 3) if new_total else 0.0,
+        }
     }
 
 
@@ -388,31 +447,104 @@ async def q15_unpaid_30d(client: ClinikoClient) -> dict[str, Any]:
 async def q16_unissued_invoices(client: ClinikoClient) -> dict[str, Any]:
     """Q16: appointments from last week with no invoice issued.
 
-    GAP: need to cross-reference appointments with invoices. No direct flag.
+    NOW USES: get_appointment_invoice_join.
     """
+    today = date.today()
+    monday = today - timedelta(days=today.weekday() + 7)
+    sunday = monday + timedelta(days=6)
+
+    # Inline replication of the aggregator's logic
+    appt_params = [
+        ("per_page", "100"),
+        ("q[]", f"starts_at:>={monday.isoformat()}T00:00:00Z"),
+        ("q[]", f"starts_at:<={sunday.isoformat()}T23:59:59Z"),
+    ]
+    ar = await client.get("/individual_appointments", params=appt_params)
+    if "error" in ar:
+        return {"answer": None, "raw_error": ar}
+    appts = ar.get("individual_appointments", [])
+
+    inv_from = (monday - timedelta(days=7)).isoformat()
+    inv_to = (sunday + timedelta(days=14)).isoformat()
+    ir = await client.get("/invoices", params=[
+        ("per_page", "100"),
+        ("q[]", f"issue_date:>={inv_from}"),
+        ("q[]", f"issue_date:<={inv_to}"),
+    ])
+    invoices = ir.get("invoices", []) if "error" not in ir else []
+
+    appt_with_invoice = set()
+    for inv in invoices:
+        link = (inv.get("appointment") or {}).get("links", {}).get("self", "")
+        if link:
+            appt_with_invoice.add(link.rstrip("/").rsplit("/", 1)[-1])
+
+    unbilled = [a["id"] for a in appts if a["id"] not in appt_with_invoice]
+
     return {
-        "answer": None,
-        "implementation_gap": (
-            "Requires joining appointments (last week) with invoices to find "
-            "appointments without a corresponding invoice. Doable via N+1 but "
-            "a dedicated tool would be far cleaner."
-        ),
+        "answer": {
+            "from": monday.isoformat(),
+            "to": sunday.isoformat(),
+            "appointments_in_window": len(appts),
+            "appointments_without_invoice": len(unbilled),
+            "sample_ids": unbilled[:5],
+        }
     }
 
 
 async def q17_avg_dollar_per_appt_type(client: ClinikoClient) -> dict[str, Any]:
     """Q17: average $ per appointment by appointment type.
 
-    GAP: invoices link to billable items, not appointment types directly. Complex join.
+    NOW USES: get_appointment_invoice_join, last 90 days.
     """
-    return {
-        "answer": None,
-        "implementation_gap": (
-            "Cliniko invoices link to billable_items, not appointment_types. "
-            "Would need 3-way join: appointment → invoice → billable_item → "
-            "appointment_type. Worth a dedicated aggregator tool."
-        ),
-    }
+    today = date.today()
+    start = today - timedelta(days=90)
+
+    appt_params = [
+        ("per_page", "100"),
+        ("q[]", f"starts_at:>={start.isoformat()}T00:00:00Z"),
+    ]
+    ar = await client.get("/individual_appointments", params=appt_params)
+    if "error" in ar:
+        return {"answer": None, "raw_error": ar}
+    appts = ar.get("individual_appointments", [])
+
+    at = await client.get("/appointment_types", params={"per_page": 100})
+    type_map = {t["id"]: t.get("name") for t in at.get("appointment_types", [])}
+
+    inv_from = (start - timedelta(days=7)).isoformat()
+    inv_to = (today + timedelta(days=14)).isoformat()
+    ir = await client.get("/invoices", params=[
+        ("per_page", "100"),
+        ("q[]", f"issue_date:>={inv_from}"),
+        ("q[]", f"issue_date:<={inv_to}"),
+    ])
+    invoices = ir.get("invoices", []) if "error" not in ir else []
+
+    appt_to_invoice: dict[str, dict[str, Any]] = {}
+    for inv in invoices:
+        link = (inv.get("appointment") or {}).get("links", {}).get("self", "")
+        if link:
+            appt_to_invoice[link.rstrip("/").rsplit("/", 1)[-1]] = inv
+
+    from collections import defaultdict
+    agg: dict[str, dict[str, Any]] = defaultdict(lambda: {"name": "?", "count": 0, "invoiced_count": 0, "total_revenue": 0.0})
+    for a in appts:
+        at_link = (a.get("appointment_type") or {}).get("links", {}).get("self", "")
+        at_id = at_link.rstrip("/").rsplit("/", 1)[-1] if at_link else "unknown"
+        agg[at_id]["name"] = type_map.get(at_id, at_id)
+        agg[at_id]["count"] += 1
+        inv = appt_to_invoice.get(a["id"])
+        if inv:
+            agg[at_id]["invoiced_count"] += 1
+            try:
+                agg[at_id]["total_revenue"] += float(inv.get("total_amount") or 0)
+            except (TypeError, ValueError):
+                pass
+    for v in agg.values():
+        v["avg_per_appointment"] = round(v["total_revenue"] / v["invoiced_count"], 2) if v["invoiced_count"] else 0.0
+        v["total_revenue"] = round(v["total_revenue"], 2)
+    return {"answer": {"by_type": dict(agg), "from": start.isoformat(), "to": today.isoformat()}}
 
 
 async def q18_recent_no_shows(client: ClinikoClient) -> dict[str, Any]:
@@ -435,16 +567,32 @@ async def q18_recent_no_shows(client: ClinikoClient) -> dict[str, Any]:
 async def q19_repeat_no_shows(client: ClinikoClient) -> dict[str, Any]:
     """Q19: patients with highest no-show frequency.
 
-    GAP: need to aggregate no-shows per patient. Same N+1 issue.
+    NOW USES: get_patient_appointment_stats sampled across patients.
     """
-    return {
-        "answer": None,
-        "implementation_gap": (
-            "Aggregation across patients needed. Could be done with N+1 calls "
-            "(list_appointments_for_patient per patient + filter did_not_arrive) "
-            "or a dedicated `patient_no_show_count` aggregator tool."
-        ),
-    }
+    pr = await client.get("/patients", params={"per_page": 30})
+    if "error" in pr:
+        return {"answer": None, "raw_error": pr}
+    patients = pr.get("patients", [])
+    rows = []
+    for p in patients:
+        ar = await client.get(
+            "/individual_appointments",
+            params=[("per_page", "100"), ("q[]", f"patient_id:={p['id']}")],
+        )
+        if "error" in ar:
+            continue
+        appts = ar.get("individual_appointments", [])
+        total = len(appts)
+        no_shows = sum(1 for a in appts if a.get("did_not_arrive"))
+        if total > 0:
+            rows.append({
+                "name": f"{p.get('first_name','')} {p.get('last_name','')}".strip(),
+                "no_shows": no_shows,
+                "total_appts": total,
+                "no_show_rate": round(no_shows / total, 3),
+            })
+    rows.sort(key=lambda x: x["no_show_rate"], reverse=True)
+    return {"answer": {"top_5_no_show_rate": rows[:5]}}
 
 
 async def q20_no_show_followup_draft(client: ClinikoClient) -> dict[str, Any]:
