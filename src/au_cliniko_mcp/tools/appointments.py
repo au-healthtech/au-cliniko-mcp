@@ -8,11 +8,11 @@ Phase B wires both as read-only listing + get. Phase C adds write tools wrapped
 with the draft → commit consent gate. Phase E adds the group-appointment write
 paths.
 
-NOTE on field-name divergence (Cliniko quirk):
-    Listing returns `starts_at` and `ends_at`. When CREATING an appointment via POST,
-    the request body uses `appointment_start` and `appointment_end`. When UPDATING
-    via PATCH, fields revert to `starts_at` / `ends_at`. This is documented in
-    `docs/API-LIMITATIONS.md` so the LLM doesn't get burned.
+NOTE on appointment field names (empirically verified on au5, 2026-05-18):
+    Cliniko's `individual_appointments` POST + PATCH + LIST all use `starts_at`
+    and `ends_at`. Earlier hobby implementations (BoabAI, andymillar84) claim
+    POST requires `appointment_start`/`appointment_end` — this is incorrect.
+    See `docs/API-LIMITATIONS.md`.
 """
 
 from __future__ import annotations

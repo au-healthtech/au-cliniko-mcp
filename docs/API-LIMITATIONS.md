@@ -29,17 +29,44 @@ Cliniko UI manually.
 **Body charts:** Not API-accessible. Charts (anatomical diagrams) must be drawn in
 Cliniko UI.
 
-## Appointments — POST vs PATCH field names
+## Appointments — POST field names (empirically verified au5, 2026-05-18)
 
-When creating an appointment via POST:
-- `appointment_start` (not `starts_at`)
-- `appointment_end` (not `ends_at`)
+When creating an `individual_appointment` via POST, Cliniko expects:
+- `starts_at` (NOT `appointment_start` — earlier hobby implementations got this wrong)
+- `ends_at` (NOT `appointment_end`)
 
-When updating via PATCH or in any LIST response:
-- `starts_at` / `ends_at`
+When updating via PATCH or in any LIST response: same — `starts_at` / `ends_at`.
 
-This is documented inconsistently in Cliniko's docs. Our MCP normalises by using
-the wire-correct field for each operation.
+The BoabAI/andymillar84 docs claim `appointment_start`/`appointment_end` are required
+on POST. Empirically false on au5 (and likely all shards). Our MCP uses `starts_at`/
+`ends_at` consistently for both POST and PATCH.
+
+## Recalls — required fields (empirically verified au5, 2026-05-18)
+
+POST /recalls requires:
+- `recall_at` — ISO-8601 datetime (NOT `recall_date`, NOT `due_at`)
+- `recall_type_id` — must reference an existing recall type
+- `patient_id`
+
+Cliniko trial accounts come pre-seeded with two recall types: "Return visit" and
+"Return visit (soon)". Production accounts need at least one configured before
+recalls can be created.
+
+## Treatment notes — required title field + 500-prone full-payload POST
+
+POST /treatment_notes requires:
+- `patient_id`
+- `practitioner_id`
+- `title` (REQUIRED — undocumented; omitting it returns `422: {"errors": {"title": "can't be blank"}}`)
+- `appointment_id` (optional but recommended)
+
+**Empirical 500 quirk (au5, 2026-05-18)**: POSTing the FULL note (`content` + `draft` + `title`)
+in one call returns 500 intermittently. The reliable pattern is two-step:
+1. POST /treatment_notes with metadata + title only (NO content)
+2. PATCH /treatment_notes/{id} with `{content, draft}` to populate the body
+
+Practisight (the deep-read showed this) handles the two-step correctly. Our
+`draft_treatment_note` follows the same pattern.
 
 ## Search
 
