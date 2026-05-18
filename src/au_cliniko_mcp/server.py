@@ -6,10 +6,10 @@ This is the boot path. It:
 3. Registers tools, resources, and prompts.
 4. Starts the stdio MCP server.
 
-Phase A scaffolded one tool (list_patients). Phase B (this commit) wires the
-Tier-1 read-side: patients (3 tools), practitioners, businesses, appointments
-(2 tools), invoices (3 tools). Phase C will add the @phi_flagged and
-@consent_gated decorators that wrap every tool registered here.
+Phase B (this state) wires the full Tier-1 read-side + the safety-gated
+`draft_treatment_note` write tool. Phase C will add @phi_flagged and
+@consent_gated decorators that wrap every tool registered here, plus
+PostgreSQL audit logging.
 """
 
 from __future__ import annotations
@@ -23,10 +23,15 @@ from au_cliniko_mcp.auth import ClinikoCredential, InvalidClinikoApiKey
 from au_cliniko_mcp.client import ClinikoClient
 from au_cliniko_mcp.tools import (
     appointments as appointments_tool,
+    available_time as available_time_tool,
+    bookings as bookings_tool,
     businesses as businesses_tool,
+    communications as communications_tool,
     invoices as invoices_tool,
     patients as patients_tool,
     practitioners as practitioners_tool,
+    recalls as recalls_tool,
+    treatment_notes as treatment_notes_tool,
 )
 
 
@@ -74,24 +79,24 @@ def build_server() -> tuple[FastMCP, ClinikoClient]:
             "Open-source Cliniko MCP for Australian allied-health practices. "
             "Connects Claude directly to a Cliniko account via the Cliniko REST API. "
             f"Current Cliniko shard: {credential.shard}. "
-            "All write operations default to draft mode and require an explicit commit step. "
+            "All write operations default to draft mode and require an explicit "
+            "human review step in the Cliniko UI before they take effect. "
             "PHI-touching reads are audit-logged when the audit-log database is configured."
         ),
     )
 
-    # Tier 1 read-side (Phase B):
-    patients_tool.register(mcp, client)
-    practitioners_tool.register(mcp, client)
-    businesses_tool.register(mcp, client)
-    appointments_tool.register(mcp, client)
-    invoices_tool.register(mcp, client)
-
-    # Coming in subsequent Phase B commits:
-    # bookings_tool.register(mcp, client)
-    # treatment_notes_tool.register(mcp, client)  # with draft gate
-    # recalls_tool.register(mcp, client)
-    # communications_tool.register(mcp, client)
-    # available_time_tool.register(mcp, client)
+    # Phase B — Tier-1 read-side + safety-gated treatment-note drafting:
+    patients_tool.register(mcp, client)              # 3 tools
+    practitioners_tool.register(mcp, client)         # 1 tool
+    businesses_tool.register(mcp, client)            # 1 tool
+    appointments_tool.register(mcp, client)          # 2 tools
+    bookings_tool.register(mcp, client)              # 1 tool
+    invoices_tool.register(mcp, client)              # 3 tools
+    recalls_tool.register(mcp, client)               # 2 tools
+    communications_tool.register(mcp, client)        # 1 tool
+    available_time_tool.register(mcp, client)        # 1 tool
+    treatment_notes_tool.register(mcp, client)       # 3 tools (1 safety-gated write)
+    # Total: 18 tools
 
     return mcp, client
 
