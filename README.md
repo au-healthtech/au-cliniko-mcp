@@ -2,7 +2,7 @@
 
 **The open-source Cliniko MCP built for Australian allied-health practices.**
 
-MIT-licensed. Audit-logged. AHPRA-aware. Clinical templates bundled — not sold separately.
+MIT-licensed. Audit-logged. AHPRA-aware. Clinical templates bundled.
 
 ---
 
