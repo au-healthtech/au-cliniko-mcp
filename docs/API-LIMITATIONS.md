@@ -12,10 +12,19 @@ endpoint.
 - Delete or void invoices
 - Apply payments to invoices
 
+**Empirical verification (au5, 2026-05-18):** `POST /invoices` with a syntactically
+valid body returns 404 (the endpoint isn't routed for write). The Cliniko REST API
+exposes invoices for READ only.
+
 **Workaround:** Invoice operations must happen in the Cliniko UI. Our MCP exposes
 read tools (`list_invoices`, `list_unpaid_invoices`, `get_invoice`) and will eventually
 expose a drafting helper that emits a JSON payload the practitioner can paste into
 Cliniko UI manually.
+
+**Demo-data implication:** The `seed_full_practice.py` script seeds the BILLABLE
+ITEMS catalogue (which IS writable) so demos show a populated dropdown of MBS/DVA/
+NDIS codes, but does NOT create invoices. Demo prospects need to either book +
+invoice manually in the UI for one or two examples, or stage screenshots.
 
 ## Treatment notes
 
@@ -52,21 +61,43 @@ Cliniko trial accounts come pre-seeded with two recall types: "Return visit" and
 "Return visit (soon)". Production accounts need at least one configured before
 recalls can be created.
 
-## Treatment notes — required title field + 500-prone full-payload POST
+## Treatment notes — required title + draft fields + structured content
 
 POST /treatment_notes requires:
 - `patient_id`
 - `practitioner_id`
 - `title` (REQUIRED — undocumented; omitting it returns `422: {"errors": {"title": "can't be blank"}}`)
+- `draft` (REQUIRED — omitting it returns `422: {"errors": {"draft": "is not included in the list"}}`)
 - `appointment_id` (optional but recommended)
 
-**Empirical 500 quirk (au5, 2026-05-18)**: POSTing the FULL note (`content` + `draft` + `title`)
-in one call returns 500 intermittently. The reliable pattern is two-step:
-1. POST /treatment_notes with metadata + title only (NO content)
-2. PATCH /treatment_notes/{id} with `{content, draft}` to populate the body
+**Content must be STRUCTURED, not a string (verified au5, 2026-05-18).**
+The `content` field is an object with `sections[].questions[]` keyed lists:
+```json
+{
+  "content": {
+    "sections": [
+      { "questions": [
+          {"name": "Subjective", "type": "paragraph", "answer": "<p>S: …</p>"},
+          {"name": "Objective",  "type": "paragraph", "answer": "<p>O: …</p>"},
+          {"name": "Assessment", "type": "paragraph", "answer": "<p>A: …</p>"},
+          {"name": "Plan",       "type": "paragraph", "answer": "<p>P: …</p>"}
+      ]}
+    ]
+  }
+}
+```
 
-Practisight (the deep-read showed this) handles the two-step correctly. Our
-`draft_treatment_note` follows the same pattern.
+`answer` accepts HTML. Sending a plain string under `content` returns
+`422: {"errors": {"content": "'sections' must not be empty"}}`.
+
+**One-shot vs two-step**: Once you supply `draft: false` + non-empty content
+sections, the one-shot POST works on au5. The two-step (POST shell + PATCH
+content) also works and may be preferable for very long notes. Our seed script
+uses the one-shot path for efficiency; production tools may prefer two-step.
+
+**Optional `treatment_note_template_id`** scaffolds the section structure off an
+existing template. Useful if the practice has standardised templates; ignore
+for ad-hoc free-form notes.
 
 ## Search
 
@@ -132,6 +163,22 @@ The Cliniko list view returns:
 NO `balance` field. To compute outstanding $ on an unpaid invoice, fetch the
 invoice individually to get `payments[]`, then subtract sum-of-payments from
 total_amount. The list view alone is insufficient.
+
+## Patient `notes` field — NOT q[]-filterable (verified au5, 2026-05-18)
+
+Cliniko returns `400: {"message": "notes is not filterable"}` for
+`q[]=notes:like:foo` on /patients. The general `q[]` machinery accepts most
+attribute paths but the free-text `notes` field is excluded. The `seed_dummy_data.py`
+script's idempotency check (which queried `notes:like:__au-cliniko-mcp-seed__`)
+silently returned 0 entries and bypassed the skip logic — bug fixed in the
+fullseed script by paginating and filtering client-side.
+
+## Billable items — DELETE works, PATCH `archived_at` doesn't (verified au5, 2026-05-18)
+
+`PATCH /billable_items/{id}` with `{"archived_at": "..."}` returns 200 but does
+not actually archive the item — the next GET shows `archived_at: null` again.
+The reliable way to remove a billable item is `DELETE /billable_items/{id}`
+(returns 204 + the item then 404s on subsequent GETs).
 
 ## Recall fields — `recall_at` is NOT q[]-filterable (verified au5, 2026-05-18)
 
