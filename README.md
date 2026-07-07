@@ -1,136 +1,115 @@
 # au-cliniko-mcp
 
-**The open-source Cliniko MCP built for Australian allied-health practices.**
+**The open-source Cliniko MCP for Australian allied-health business intelligence.**
 
-MIT-licensed. Audit-logged. AHPRA-aware. Clinical templates bundled.
+MIT-licensed. Audit-logged. AHPRA-aware. Built to answer "how's my practice actually doing?" — not to write your clinical notes.
 
 ---
 
 ## Why this exists
 
-Cliniko is the dominant practice-management system for Australian allied-health practitioners (physios, psychologists, podiatrists, OTs, speech pathologists, dietitians). The Model Context Protocol (MCP) lets Claude work directly with your Cliniko data — read patient records, draft treatment notes, query invoices, manage recalls — all from natural-language conversation.
+Cliniko is the dominant practice-management system for Australian allied-health practitioners (physios, psychologists, podiatrists, OTs, speech pathologists, dietitians). The Model Context Protocol (MCP) lets Claude work directly with your Cliniko data.
 
-There are existing Cliniko MCPs. None of them target the regulatory and clinical realities of an AU allied-health practice:
+**Positioning: "Heidi writes your notes. We run the other 90% of the business."**
 
-- **No audit log** of which tool touched which patient, when, by which practitioner.
-- **No PHI guards** beyond a draft gate on treatment notes.
-- **No AU compliance posture** (AHPRA, OAIC APPs, MBS, NDIS, DVA, IHI service).
-- **No clinical workflow templates** for the specific note shapes AU practitioners use.
-- **No multi-tenant model** — they assume one clinic per install.
-- **Closed-source or source-available** — you can read the code but can't fork it, and the runtime is license-gated.
+Note-writing is a crowded, well-served category (Heidi, and note-template add-ons from every existing Cliniko MCP). This project deliberately does **not** compete there. Instead it's the layer that answers the practice-owner questions Cliniko's own reporting doesn't:
 
-This project fixes that. MIT-licensed, audit-logged, with bundled discipline-specific clinical templates and an explicit AU compliance stance.
+- What's our revenue trend, and how does this month compare to last?
+- What's our capture rate — are we actually invoicing every appointment we do?
+- How much revenue have we leaked this quarter, and where?
+- Which practitioners are busiest / most underutilised?
+- What's our patient retention rate?
+- Which patients are lapsed, overdue on invoices, or due for recall — and can we draft the outreach?
+
+No existing Cliniko MCP does this. They're all CRUD wrappers (read/write patients, appointments, notes) with no aggregation, no KPI layer, and no revenue-audit tooling.
 
 ## Who maintains this
 
-[Tradd Horne](https://principalpodiatry.com.au) — AHPRA-registered podiatrist (POD0001880268), Principal Podiatry Pty Ltd (ABN 19 615 606 347). Building this from inside a working AU allied-health practice, not from outside the industry.
+[Tradd Horne](https://principalpodiatry.com.au) — AHPRA-registered podiatrist (POD0001880268), Principal Podiatry Pty Ltd (ABN 19 615 606 347). Building this from inside a working AU allied-health practice, not from outside the industry. Co-developed with Claude; every change reviewed by Tradd before merge.
 
-## Status
+## Status — 7 July 2026
 
-🚧 **Alpha.** Initial build 2026-05-18. Tracking toward v1.0 in ~10 weeks.
+🚧 **Pre-alpha, actively built.** Not yet packaged/published. Initial scaffold 18 May 2026.
 
-| Phase | Target | Status |
+| Phase | What it covers | Status |
 |---|---|---|
-| A — Foundations | Week 1 | ✅ shipped |
-| B — Tier 1 endpoints (23 tools across 10 Cliniko resources) | Weeks 2-3 | ✅ shipped |
-| C — Compliance layer (audit log, PHI guards, vault) | Weeks 3-4 | ✅ shipped |
-| D — Clinical templates (6 disciplines + NDIS) | Weeks 4-5 | pending |
-| E — Tier 2-3 endpoints | Weeks 5-7 | pending |
-| F — Hosted gateway | Weeks 7-10 | pending |
-| G — v1.0 release | Week 10 | pending |
+| A — Foundations | Shard auto-detection, auth, client, one live tool | ✅ Shipped |
+| B — Tier 1 CRUD endpoints | 18 tools across 10 Cliniko resource modules (patients, appointments, bookings, treatment notes, invoices, practitioners, businesses, recalls, communications, available time) | ✅ Shipped |
+| C — Compliance layer | Audit log (SQLite), `@phi_flagged` PHI decorator, Fernet-encrypted vault | ✅ Shipped |
+| D — Business intelligence layer | KPI digest tools, revenue-audit tools, cross-tool workflow recipes, N+1 aggregators | ✅ Shipped (this is now the core differentiator — see below) |
+| Clinical note templates (podiatry SOAP, physio, OT, etc.) | Discipline-specific note drafting | ❌ **Cut from scope.** Not building this — see "What we explicitly don't do" below. |
+| Tier 2-3 endpoints | Remaining ~19 Cliniko resource groups (attachments, patient forms, settings, tax/concessions, etc.) | Pending |
+| Hosted gateway | Multi-tenant SaaS, Stripe billing, per-clinic dashboard | Pending, deferred |
+| v1.0 / PyPI release | Public package, install docs, submission to MCP registries | Pending |
 
-## Compliance layer (Phase C)
+**Not yet packaged** — `pyproject.toml` still reads `version = "0.0.1"`, classifier `Pre-Alpha`. Runs from source only; no `pip install au-cliniko-mcp` yet.
 
-Every tool that touches Protected Health Information (PHI) carries an explicit
-`@phi_flagged` decorator declaring what categories of PHI it returns. Each call is:
+**Repo:** [`au-healthtech/au-cliniko-mcp`](https://github.com/au-healthtech/au-cliniko-mcp) (GitHub org, public). Local working copy tracks branch `feat/full-practice-seed-data`.
 
-- **Audit-logged** to local SQLite (`~/.au-cliniko-mcp/audit.db`) with timestamp,
-  tool name, patient/practitioner id (when present), PHI categories, result status,
-  elapsed ms, and redacted args. 7-year retention default (AU statutory minimum).
-- **Tagged with a `_phi` response header** so any downstream consumer knows the
-  sensitivity of the data it just received.
+## What's actually built right now
 
-API keys + future license keys are stored in a **Fernet-encrypted Vault** at
-`~/.au-cliniko-mcp/vault.db` with the encryption key at `~/.au-cliniko-mcp/vault.key`
-(chmod 600).
+**39 tools** registered across 14 modules, plus **7 named workflow prompts**.
 
-See:
-- `docs/COMPLIANCE.md` — APP-by-APP self-assessment + AHPRA / MBS / NDIS / DVA / state-statute positions
-- `docs/SECURITY.md` — threat model, controls, operational recommendations
-- `docs/PIA-template.md` — Privacy Impact Assessment template for clinics to complete pre-install
+| Module | Tools | Purpose |
+|---|---|---|
+| `insights.py` | 9 | KPI digest engine — revenue summary, new patients, no-shows, capture rate, practitioner utilisation, retention rate, per-tenant KPI preferences, digest composer |
+| `revenue.py` | 4 | Revenue audit + missed-billing detection — `revenue_audit`, `find_billing_gaps` (appointment-centric and patient-cohort modes), billable-items catalog, concession types |
+| `aggregators.py` | 3 | Multi-resource joins the LLM would otherwise chain by hand — patient appointment stats, practitioner schedule overview, appointment↔invoice join |
+| `patients.py` | 4 | CRUD |
+| `appointments.py` | 3 | CRUD |
+| `treatment_notes.py` | 3 | CRUD with draft-gate |
+| `invoices.py` | 3 | Read + create-helper |
+| `workflows.py` | 3 tools + 7 prompts | Cliniko-side data shaping for downstream connectors (recall outreach drafts, invoice chase drafts, calendar-event formatting) + named recipes: `weekly_recall_review`, `invoice_chase_workflow`, `no_show_followup_workflow`, `monday_morning_digest`, `appointment_calendar_sync`, `end_of_month_report` |
+| `recalls.py` | 2 | CRUD |
+| `available_time.py`, `bookings.py`, `businesses.py`, `communications.py`, `practitioners.py` | 1 each | Read |
 
-## Quick start (when v1.0 ships)
+**Eval-tested, not just built.** `tests/integration/llm_eval.py` runs a 26-question eval suite against a live Cliniko sandbox with `claude-haiku-4-5` as the calling model. Latest run: **25/26 questions answered correctly for ~$0.27**. This is how gaps get found — several tools (aggregators, cost-confirmation gates, pagination fixes) exist specifically because the eval surfaced a question the tool set couldn't answer cleanly.
 
-```bash
-pip install au-cliniko-mcp
-```
+**Safety features already in place:**
+- Cost-confirmation gates on any tool that could fan out across large date ranges (`revenue_audit`, `find_billing_gaps`, `get_appointment_invoice_join`) — refuses and asks the user to confirm before burning API calls/tokens on a large scope.
+- Consent-gate pattern on treatment-note writes (draft → explicit commit).
+- `@phi_flagged` decorator + categorisation on every tool that returns PHI, audit-logged to `~/.au-cliniko-mcp/audit.db`.
+- API keys stored in a Fernet-encrypted vault (`~/.au-cliniko-mcp/vault.db`), never plaintext.
 
-Then add to your Claude Desktop config (`claude_desktop_config.json`):
+**Test data:** `tests/integration/seed_full_practice.py` generates a synthetic 500-patient mid-sized AU podiatry practice for realistic testing without touching real patient data.
 
-```json
-{
-  "mcpServers": {
-    "cliniko": {
-      "command": "au-cliniko-mcp",
-      "env": {
-        "CLINIKO_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
-```
-
-Shard is auto-detected from the API key suffix. No manual configuration.
-
-## Architecture
+## Architecture (as built)
 
 ```
 src/au_cliniko_mcp/
 ├── server.py          FastMCP setup + tool registration
 ├── client.py          Shared async httpx client; shard auto-detect
 ├── auth.py            API key parsing, User-Agent shaping
-├── vault.py           Encrypted key storage (Fernet → KMS)
-├── audit.py           PostgreSQL audit log writer
-├── phi.py             PHI-flag decorators, consent-gate decorators
-├── shaping.py         Markdown summary builders (10x compression)
-├── pagination.py      Cursor + page helpers
-├── errors.py          Status-specific LLM-friendly error builders
-├── models/            Pydantic models per Cliniko resource
-├── tools/             One module per Cliniko resource group
-├── resources/         MCP resources (read-only data feeds)
-├── templates/         AU clinical templates (podiatry SOAP, physio, OT, ...)
-└── prompts/           MCP prompts (canned workflows)
+├── vault.py           Fernet-encrypted key + preferences storage
+├── audit.py           SQLite audit log writer
+├── phi.py             PHI-flag decorators, categories
+└── tools/
+    ├── patients.py, appointments.py, bookings.py, treatment_notes.py,
+    │   invoices.py, practitioners.py, businesses.py, recalls.py,
+    │   communications.py, available_time.py     — Tier 1 CRUD
+    ├── revenue.py                                — revenue audit / leakage detection
+    ├── insights.py                               — KPI digest engine
+    ├── aggregators.py                            — cross-resource joins
+    └── workflows.py                              — Shape-A workflow recipes + prompts
 ```
 
-## What sets this apart
+Audit log is currently **SQLite** (`~/.au-cliniko-mcp/audit.db`), not Postgres — the original architecture doc called for Postgres but SQLite is what's actually running for the single-tenant pre-alpha stage. Revisit for the hosted-gateway phase, if that phase happens.
 
-| | au-cliniko-mcp | Alternatives |
-|---|---|---|
-| Licence | **MIT** — fork, modify, sell | Closed or source-available |
-| Audit log | **PostgreSQL, per-tool, per-tenant** | None |
-| PHI guards | **`@phi_flagged` decorator + categorisation** | None |
-| Consent gate | **Default draft → explicit commit** on every write | Draft gate on treatment notes only |
-| AU compliance docs | **APP, OAIC, AHPRA, MBS, NDIS, DVA, IHI** explicit | None |
-| Clinical templates | **6 disciplines + NDIS bundled free** | Sold separately at $129/discipline |
-| Multi-tenant | **Per-clinic vault + dashboard** | Single-clinic install |
-| Open source | **Truly MIT, fork-friendly** | License-key gated runtime |
-| Built by | **AHPRA-registered podiatrist** | Developers |
+## What we explicitly don't do
 
-## Compliance posture
+- **No clinical note templates.** Originally planned (podiatry SOAP, physio initial assessment, OT/psych/speech/dietetics templates), explicitly **cut from scope**. Heidi and similar tools already do this well; it's not our differentiator and duplicating it dilutes the BI positioning.
+- **Not competing on raw CRUD/API coverage.** Other Cliniko MCPs (Practisight, various hobby forks) already do CRUD adequately. We only build CRUD depth where a BI tool needs it as a dependency (e.g. invoices, appointments).
+- **Not a chat UI.** Consumed via Claude Desktop / Claude Code / Claude.ai only.
+- **No diagnostic/therapeutic claims** (TGA-medical-device territory) — everything is framed as time/admin/revenue insight, never clinical outcomes, in line with AHPRA advertising rules.
 
-Read `docs/COMPLIANCE.md` for the explicit position on:
+## Compliance layer
 
-- Privacy Act 1988 + Australian Privacy Principles (APP), especially APP 8 (cross-border) and APP 11 (security)
-- OAIC Notifiable Data Breaches scheme
-- AHPRA advertising guidelines (this project markets time/admin/revenue savings only — never clinical outcome claims)
-- Medicare Benefits Schedule (MBS) and Chronic Disease Management billing flows
-- NDIS service log requirements
-- Healthcare Identifiers Act 2010 (only relevant if Healthcare Identifier service is touched)
-- Cliniko's own data residency (AU shard `api.au1.cliniko.com` through `api.au4.cliniko.com`)
+Every tool touching Protected Health Information carries an explicit `@phi_flagged` decorator declaring the PHI categories it returns. Each call is:
 
-## Contributing
+- **Audit-logged** to local SQLite with timestamp, tool name, patient/practitioner id (when present), PHI categories, result status, elapsed ms, and redacted args.
+- **Tagged with a `_phi` response header** so downstream consumers know the sensitivity of what they just received.
 
-Issues and pull requests welcome from the AU allied-health community. See `docs/CONTRIBUTING.md` when it exists.
+See `docs/COMPLIANCE.md` (APP/OAIC/AHPRA/MBS/NDIS/DVA position), `docs/SECURITY.md` (threat model), `docs/PIA-template.md` (Privacy Impact Assessment template for clinics to complete pre-install), `docs/INSTALL-SOP.md`, `docs/API-LIMITATIONS.md`.
 
 ## Licence
 
@@ -138,4 +117,4 @@ MIT. See `LICENSE`.
 
 ## Disclosure on AI use
 
-This codebase is co-developed with Claude (Anthropic's AI). Every code change is reviewed by Tradd before merge. See `docs/AI-DISCLOSURE.md` (forthcoming) for the full transparency statement.
+This codebase is co-developed with Claude (Anthropic's AI). Every code change is reviewed by Tradd before merge.
